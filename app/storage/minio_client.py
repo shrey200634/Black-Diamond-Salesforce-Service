@@ -28,15 +28,21 @@ class MinIOClient:
         self._ensure_bucket_exists()
 
     def _ensure_bucket_exists(self):
-        """Creates bucket if it doesn't exist."""
+        """Creates bucket if it doesn't exist. Gracefully handles connection failures at startup."""
         if not self.enabled:
             return
         try:
             self.client.head_bucket(Bucket=self.bucket)
             logger.info(f"MinIO bucket exists — {self.bucket}")
-        except ClientError:
-            self.client.create_bucket(Bucket=self.bucket)
-            logger.info(f"MinIO bucket created — {self.bucket}")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "404":
+                self.client.create_bucket(Bucket=self.bucket)
+                logger.info(f"MinIO bucket created — {self.bucket}")
+            else:
+                logger.warning(f"MinIO bucket check failed — {e}")
+        except Exception as e:
+            logger.warning(f"MinIO not reachable at startup — will retry on first upload. Error: {e}")
 
     def upload_parquet(self, data: bytes, scan_id: str, org_id: str, sf_object: str) -> str:
         """

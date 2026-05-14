@@ -7,12 +7,19 @@ services:
       - "5711:5711"
     env_file:
       - .env
+    environment:
+      # Override endpoints to use Docker service names instead of localhost
+      MINIO_ENDPOINT: minio:9000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgresql://user:password@postgres:5432/salesforce_service
     depends_on:
-      - minio
-      - kafka
-      - postgres
-    volumes:
-      - .:/app
+      minio:
+        condition: service_started
+      kafka:
+        condition: service_started
+      postgres:
+        condition: service_started
+    restart: unless-stopped
 
   minio:
     image: minio/minio
@@ -23,6 +30,9 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -31,10 +41,13 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     depends_on:
       - zookeeper
+    restart: unless-stopped
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
@@ -42,6 +55,7 @@ services:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+    restart: unless-stopped
 
   postgres:
     image: postgres:15
@@ -51,3 +65,10 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: salesforce_service
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+  postgres_data:
